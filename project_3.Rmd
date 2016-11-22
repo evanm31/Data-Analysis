@@ -1,0 +1,190 @@
+---
+title: "Project 3"
+author: "Evan Moore"
+date: "October 17, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exploratory Analysis
+
+My first step is importing the data and taking a look at the summary to get a sense of the variables' values across all employees. 
+
+```{r, message=F}
+library(RCurl)
+x <- getURL("https://raw.githubusercontent.com/tommyjee/ugrid/master/Proj_3/employee_retention_data.csv")
+employees <- read.csv(text = x)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+employees <- tbl_df(employees)
+summary(employees)
+```
+
+Nothing seems to stick out, besides the confusing max value of 99 for seniority . Let's investigate that further. 
+```{r, warning=F}
+sort(unique(employees$seniority), decreasing = TRUE)
+subset(employees, seniority > 30)
+```
+
+Only a couple odd values in the dataset; let's throw them out since we have so much other data to work with.
+```{r}
+employees <- subset(employees, seniority < 30)
+```
+
+Now that we have a more accurate dataset, we can split it into chunks of those who stayed and those who quit, and check those out individually to see if anything notable comes up.
+```{r}
+stay <- subset(employees, is.na(employees$quit_date))
+quit <- subset(employees, !is.na(employees$quit_date))
+summary(quit)
+summary(stay)
+```
+We can see that those who stay tend to have higher average salaries by about 6 thousand dollars than those who quit, but otherwise everything seems to be normal between the two sets, including having identical seniority values. Less salary for those who quit could indicate that employees may be motivated by a desire for greater pay as a reason to quit. Many more customer service employees are leaving than any other department, but this is explained by the much higher number of employees in that category represented in the dataset. To get a better sense of which departments are suffering the most from churn, we can by dividing the count of each in `quit` by the total count for the `employees` dataset to figure out what percentage of each job ended up leaving.
+```{r, message = F}
+library(plyr)
+by_dept <- count(quit, 'dept')[,2] / count(employees, 'dept')[,2]
+names(by_dept) <- c("Customer Service","Data Science","Design","Engineer","Marketing","Sales")
+by_dept
+sum(by_dept) / 6 #average between all departments
+```
+
+So, data scientists and engineers have the lowest turnover at 52-53%, while the rest of the departments have between 55 and 57%. Considering the specialized nature of the work data scientists and engineers do, it makes sense that they would have more permanent jobs and benefits that may lead to less quitting. On the other hand, customer service jobs often come and go, not mandating any advanced experience and being popular jobs for young people who may have school or other responsibilites that could make them quit or switch jobs. As for the other departments, being somewhere in between the specialty of customer service and data science/engineering, it's not immediately clear what would make them have higher-than-average turnover rates.
+
+Salary seems to be a reasonable variable to go off of (being the only clear difference between the general `stay` and `quit` datasets), so I tried some analysis of the salaries in specific departments between those who stayed and those who quit to get a better sense of the relationship. First, for the department with the greatest amount of quitting, sales: 
+```{r}
+sales_quit <- filter(quit, dept=='sales')
+sales_stay <- filter(stay, dept=='sales')
+sumSales <- sum(sales_quit$salary / nrow(sales_quit)) - sum(sales_stay$salary / nrow(sales_stay))
+sumSales
+```
+
+There's only a few hundred dollars difference - salary is probably not affecting whether people working in sales quit or not. For data science, on the other hand...
+```{r}
+data_quit <- filter(quit, dept=='data_science')
+data_stay <- filter(stay, dept=='data_science')
+sumData <- sum(data_quit$salary / nrow(data_quit)) - sum(data_stay$salary / nrow(data_stay))
+sumData
+```
+
+A more notable difference of 16 thousand dollars could potentially point to a reason why a data scientist may leave and look for a higher-paying job. Engineers display a similar, but slightly smaller, gap, perhaps explaining why they quit less than data scientists.
+```{r}
+engin_quit <- filter(quit, dept=='engineer')
+engin_stay <- filter(stay, dept=='engineer')
+sumEngin <- sum(engin_quit$salary / nrow(engin_quit)) - sum(engin_stay$salary / nrow(engin_stay))
+sumEngin
+```
+
+The difference in salaries from all departments:  
+```{r echo = F}
+market_quit <- filter(quit, dept=='marketing')
+market_stay <- filter(stay, dept=='marketing')
+sumMarket <- sum(market_quit$salary / nrow(market_quit)) - sum(market_stay$salary / nrow(market_stay))
+design_quit <- filter(quit, dept=='design')
+design_stay <- filter(stay, dept=='design')
+sumDesign <- sum(design_quit$salary / nrow(design_quit)) - sum(design_stay$salary / nrow(design_stay))
+service_quit <- filter(quit, dept=='customer_service')
+service_stay <- filter(stay, dept=='customer_service')
+sumService <- sum(service_quit$salary / nrow(service_quit)) - sum(service_stay$salary / nrow(service_stay))
+```
+
+```{r, echo =F}
+salarySums <- c(sumSales, sumData, sumEngin, sumService, sumMarket, sumDesign)
+names(salarySums) <- c("Sales", "Data Science", "Engineering", "Customer Service", "Marketing", "Design")
+salarySums
+```
+
+Interestingly, the rest of the departments have a positive difference, meaning those who quit actually made more. While this  contradicts the conclusions made from the `quit`/`stay` summaries, it is in fact reasonable to consider the inflated values for data scientists and engineers in a different category as the rest of the jobs due to their higher prestige and salaries. This indicates that the 6 thousand dollar difference between these datasets was almost solely caused by the much higher salaries from data scientists and engineers, further confirming my suspicion that these jobs should be treated separately than the others ones. Perhaps this implies that those who quit were getting payed more, and therefore had more responsibility or potential as deemed by the company, making them more attractive targets at other jobs should they decide they want a new work experience. This still doesn't explain why they would quit in the first place, though. Let's take a look at average differences in seniority among each department between quit and stay to see if there are any connections to be untangled there. 
+
+```{r, echo=F}
+seniorityStay <- c(mean(sales_stay$seniority), mean(data_stay$seniority), mean(engin_stay$seniority), mean(service_stay$seniority), mean(market_stay$seniority), mean(design_stay$seniority))
+names(seniorityStay) <- c("Sales", "Data Science", "Engineering", "Customer Service", "Marketing", "Design")
+seniorityQuit <- c(mean(sales_quit$seniority), mean(data_quit$seniority), mean(engin_quit$seniority), mean(service_quit$seniority), mean(market_quit$seniority), mean(design_quit$seniority))
+names(seniorityQuit) <- c("Sales", "Data Science", "Engineering", "Customer Service", "Marketing", "Design")
+seniorityQuit - seniorityStay
+```
+As the summaries suggest, there is no major difference between the seniorities of those who quit versus those who stayed. We see that in half the cases, quitting indicates a lower seniority, while in the other half it is the opposite. Like the salary summaries, data science and engineering are in a league of their own, while sales is barely positive and the rest are negative values, indicating that outside of the high-tier jobs those with more seniority coming into the job may be more likely to quit. For data science and engineering, more previous experience indicates that they are more likely to stay, perhaps reflecting the terminal nature of these jobs. Customer service and design both have values of seniority close to a year greater for those who quit, which implies that hiring employees with less seniority for these jobs may lead to less churn.
+
+Finally, we can look at the length of time that each worker stayed at their job in order to gain more insight about which departments may have the quickest vs. longest churn rates overall. The lubridate package makes these types of calculations easy. 
+```{r, echo=T, include=F}
+lapply(quit[,6:7], ymd)
+quit <- mutate(quit, work_days = as.period(interval(join_date, quit_date)))
+```
+```{r}
+ggplot(quit, aes(x = (as.numeric(work_days) / 86400))) + geom_freqpoly(bins= 50, aes(col = dept), size = 1) + xlab("Days Worked Before Quitting")
+```
+
+Judging by this plot, employee churn spikes heavily after about on year of work, then has a smaller spike after about two years, before roughly evening out for any number of days after. Both large chunks are normally distributed, showing that the numbers start ramping up after about 250 days, peak at one year and then slowly ramp down until about 500 days before beginning the same process again, albeit on a smaller scale. This make the data heavily skewed right, as empoyees who have been working for multiple years in a row will be less likely to quit than someone who works for a year and realizes they are not fit for the job. The departments' sizes are reflected on the y-axis - customer service has the greatest number of employees by a large margin, and therefore has a much higher quit amount than the other jobs. Design is on the other end of the spectrum, featuring noticably lower values. The rest of the departments are roughly equivalent, with data scientists having slightly lower amount. Let's look at each department individually based on average number of days worked to get some more insight.
+
+```{r, echo = F, include = F}
+sales_quit <- filter(quit, dept=='sales')
+data_quit <- filter(quit, dept=='data_science')
+engin_quit <- filter(quit, dept=='engineer')
+market_quit <- filter(quit, dept=='marketing')
+design_quit <- filter(quit, dept=='design')
+service_quit <- filter(quit, dept=='customer_service')
+quitDays = select(quit, 3, 8)
+quitDays$work_days <- as.numeric(quit$work_days) / 86400
+salesDays_quit <- filter(quitDays, dept=='sales')
+tbl_df(salesDays_quit)
+salesMean <- mean(salesDays_quit$work_days)
+dataDays_quit <- filter(quitDays, dept=='data_science')
+tbl_df(dataDays_quit)
+dataMean <- mean(dataDays_quit$work_days)
+enginDays_quit <- filter(quitDays, dept=='engineer')
+tbl_df(enginDays_quit)
+enginMean <- mean(enginDays_quit$work_days)
+marketDays_quit <- filter(quitDays, dept=='marketing')
+tbl_df(marketDays_quit)
+marketMean <- mean(marketDays_quit$work_days)
+designDays_quit <- filter(quitDays, dept=='design')
+tbl_df(designDays_quit)
+designMean <- mean(designDays_quit$work_days)
+serviceDays_quit <- filter(quitDays, dept=='customer_service')
+tbl_df(serviceDays_quit)
+serviceMean <- mean(serviceDays_quit$work_days)
+avgDays <- c(salesMean, dataMean, enginMean, serviceMean, marketMean, designMean)
+names(avgDays) <- c("Sales", "Data Science", "Engineering", "Customer Service", "Marketing", "Design")
+```
+```{r, echo=F}
+avgDays
+```
+Data scientists and engineers stay about a month and a half longer than the norm, with the other three jobs closely related and sales lagging slightly behind. Interesting how the relationships between the variables in this dataset exhibit similar traits through a variety of different situations. 
+
+## Predictive Analysis
+Let's try using logistic regression to predict if an employee from the general dataset will quit or not.
+```{r}
+employees <- mutate(employees, quit = is.na(employees$quit_date))
+employees$quit <- employees$quit * 1
+employees_train <- employees[1:16933,]
+employees_test <- employees[16933:24189,]
+model <- glm(quit ~ join_date + seniority + salary + dept ,family=binomial(link='logit'),data=employees_train)
+summary(model)
+anova(model, test="Chisq")
+```
+To get a better sense of its accuracy: 
+
+```{r}
+fitted.results <- predict(model,newdata=subset(employees_test,select=c(1,2,3,4)),type='response')
+fitted.results <- ifelse(fitted.results > 0.5,1,0)
+misClasificError <- mean(fitted.results != employees_test$quit)
+print(paste('Accuracy',1-misClasificError))
+```
+78.6% - not bad. Let's graph the ROC curve to get a sense of the true positive rate  vs false positive rate and calculate the area under the curve (AUC). The closer to one the AUC is, the more accurate the regression model is. 
+```{r}
+library(ROCR)
+p <- predict(model, newdata=subset(employees_test,select=c(1, 2,3,4)), type="response")
+pr <- prediction(p, employees_test$quit)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+## Conclusions
+
+Overall, my results were inconclusive - while I was able to determine some new relationships between variables in the `quit` subset, I was not able to clearly determine what is making employees quit. While for data science and engineering, higher salaries offered by other jobs point to a potential reason for quitting, this relationship does not hold for the other departments. The greatest amount of employees will leave during their first year, so the company should focus more on making the transition into working smoother to keep people from quitting so early. Similar tactics should be applied in the second year to alleviate the smaller churn spike that comes after. High numbers of customer service jobs quitting should not be the focus of the company since these jobs often come and go due to the nature of the employees: instead, the higher than average number of sales, design, and marketing jobs quitting should be looked into further to see what may be causing that. For customer service and design in particular, hiring employees with less experience coming in should lead to less churn, at the cost of potentially higher training expenses if required. Sales could also be looked because employees spend on average the least amount of time working in that department before quitting. Through a logistic regression model I was able to predict accurately whether an employee would quit or stay about 80% of the time based on the included dataset. This model could be used on future employees to get a sense of whether or not they will quit in the near future, but should be taken with a grain of salt since it has not been tested on outside data.
+
+If we were to include more variables, an important one for predicting churn would be whether the employee's partner has changed jobs, as that would provide a clear reason to quit, even if there was nothing otherwise making the employee do so. And while somewhat harder to work with, sentiment analysis could be applied to any sort of feedback employees have given about their jobs and predictors could be utilized as a result. Getting information on why the employees left would also be immensely valuable, whether they were fired for incompetence/not being a good fit, left of their own accord for a new offer, or quit for unrelated reasons potentially related to the workplace enviroment. Seeing the spread of reasons why (even if not entirely accurate) would give a better sense of what may be driving churn in a company. 
