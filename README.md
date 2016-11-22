@@ -1,2 +1,2 @@
 # Data-Analysis
-Intro data analysis projects 
+Beginner data analysis projects 
